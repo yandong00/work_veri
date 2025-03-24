@@ -2,7 +2,7 @@ module spi_rxc(
     input wire clk_rx,
     input wire spi_rx_rstn,
     input wire [1:0] df,
-    input wire [12:0] spi_tnum,
+    input wire [12:0] spi_tnum_max,
     input wire lsbf,
     input wire crc_en,
 
@@ -12,7 +12,8 @@ module spi_rxc(
     output wire [31:0] rx_crc_data_out,
     
     output reg [31:0] spi_rx_data,
-    output wire rx_num_max_en,
+    output reg rx_num_max_en,
+    output reg rx_crc_en,
 
     output reg rx_busy
 );
@@ -24,15 +25,14 @@ wire    [4:0]   shift_num_cnt_pre;
 reg     [4:0]   shift_num_cnt;
 wire    [4:0]   shift_num_max;
 
+wire    [12:0]  rx_num_cnt_pre;
 reg     [12:0]  rx_num_cnt;
-wire    [12:0]  rx_num_max;
 
 //---------------------------------------------------------------
 // select shift data width
 //---------------------------------------------------------------
 assign shift_num_max = (df == 2'b00) ? 5'd7 :
                         (df == 2'b01) ? 5'd15 : 5'd31 ;
-
 
 //---------------------------------------------------------------
 // shift register: shift_reg_pre
@@ -62,18 +62,41 @@ always @(posedge clk_rx or negedge spi_rx_rstn) begin
 end
 
 //---------------------------------------------------------------
-// transfer data frame counter(only use to crc mode)
+// transfer data frame counter(data frame and crc frame)
 //---------------------------------------------------------------
+
+assign rx_num_cnt_pre = (shift_num_cnt == 5'd0) & ~rx_num_max_en ? (rx_num_cnt + 1'b1) : rx_num_cnt;
 always @(posedge clk_rx or negedge spi_rx_rstn) begin
     if (!spi_rx_rstn) begin
         rx_num_cnt <= 13'h0;
     end
-    else if ((shift_num_cnt >= shift_num_max) & ~rx_num_max_en)begin
-        rx_num_cnt <= rx_num_cnt + 1'b1;
+    else begin
+        rx_num_cnt <= rx_num_cnt_pre;
     end
 end
-assign rx_num_max_en = (rx_num_cnt >= spi_tnum);
 
+wire rx_num_max_en_pre;
+assign rx_num_max_en_pre = (rx_num_cnt_pre >= spi_tnum_max);
+always @(posedge clk_rx or negedge spi_rx_rstn) begin
+    if (!spi_rx_rstn) begin
+        rx_num_max_en <= 1'b0;
+    end
+    else begin
+        rx_num_max_en <= rx_num_max_en_pre;
+    end
+end
+
+wire rx_crc_en_pre;
+assign rx_crc_en_pre =  ~crc_en ? 1'b0 : 
+                        (rx_num_max_en & (shift_num_cnt == 5'd0) ? 1'b1 : rx_crc_en);
+always @(posedge clk_rx or negedge spi_rx_rstn) begin
+    if (!spi_rx_rstn) begin
+        rx_crc_en <= 1'b0;
+    end
+    else begin
+        rx_crc_en <= rx_crc_en_pre;
+    end
+end
 //---------------------------------------------------------------
 // rx busy flag use to set rxne
 //---------------------------------------------------------------
@@ -97,7 +120,7 @@ always @(posedge clk_rx or negedge spi_rx_rstn) begin
     if (!spi_rx_rstn) begin
         spi_rx_data <= 32'h0;
     end
-    else if (shift_num_cnt == 5'd0) begin
+    else if (shift_num_cnt_pre == 5'd0) begin
         spi_rx_data <= rx_data;
     end
 end
@@ -105,30 +128,19 @@ end
 //---------------------------------------------------------------
 // serial crc calculation
 //---------------------------------------------------------------
-serial_crc_new u_tx_crc (
+wire crc_calc_en;
+assign crc_calc_en = crc_en & ~rx_crc_en_pre;
+
+serial_crc_new u_rx_crc (
     .clk(clk_rx),
     .rst_n(spi_rx_rstn),
     .data_in(shift_reg_pre[31]),
-    .data_valid(crc_en & ~rx_num_max_en),
+    .data_valid(crc_calc_en),
     .init(~crc_en),
     .crc_mode(df),
     .polynomial(crc_poly),
     .crc_out(rx_crc_data_out)
 );
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 function [31:0] rx_msb_sort;
 input [31:0] din;
@@ -171,26 +183,5 @@ begin
     end
 end
 endfunction
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 endmodule
