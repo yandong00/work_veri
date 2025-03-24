@@ -15,6 +15,7 @@ module spi_txc (
 
     output reg tx_start,
     output reg tx_num_max_en,
+    output reg tx_crc_en,
 
     output wire shift_out
 );
@@ -101,7 +102,6 @@ always @(posedge sclk_tx or negedge spi_tx_rstn) begin
 end
 
 wire tx_crc_en_pre;
-reg  tx_crc_en;
 assign tx_crc_en_pre =  ~crc_en ? 1'b0 : 
                         (tx_num_max_en & (shift_num_cnt == 5'd0) ? 1'b1 : tx_crc_en);
 always @(posedge sclk_tx or negedge spi_tx_rstn) begin
