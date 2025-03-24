@@ -3,7 +3,7 @@ module spi_txc (
     input wire spi_tx_rstn,
     input wire [31:0] spi_tx_data,
     input wire [1:0] df,
-    input wire [12:0] spi_tnum,
+    input wire [12:0] spi_tnum_max,
     input wire lsbf,
     input wire crc_en,
 
@@ -14,7 +14,7 @@ module spi_txc (
     output wire [31:0] tx_crc_data_out,
 
     output reg tx_start,
-    output wire tx_num_max_en,
+    output reg tx_num_max_en,
 
     output wire shift_out
 );
@@ -75,6 +75,8 @@ end
 //---------------------------------------------------------------
 // transfer data frame counter(only use to crc mode)
 //---------------------------------------------------------------
+wire [12:0] tx_num_cnt_pre;
+assign tx_num_cnt_pre = (shift_num_cnt == 5'd0) & ~tx_num_max_en ? (tx_num_cnt + 1'b1) : tx_num_cnt;
 always @(posedge sclk_tx or negedge spi_tx_rstn) begin
     if (!spi_tx_rstn) begin
         tx_num_cnt <= 13'h0;
@@ -86,7 +88,31 @@ always @(posedge sclk_tx or negedge spi_tx_rstn) begin
         tx_num_cnt <= tx_num_cnt + 1'b1;
     end
 end
-assign tx_num_max_en = (tx_num_cnt >= spi_tnum);
+
+wire tx_num_max_en_pre;
+assign tx_num_max_en_pre = (tx_num_cnt_pre >= spi_tnum_max);
+always @(posedge sclk_tx or negedge spi_tx_rstn) begin
+    if (!spi_tx_rstn) begin
+        tx_num_max_en <= 1'b0;
+    end
+    else begin
+        tx_num_max_en <= tx_num_max_en_pre;
+    end
+end
+
+wire tx_crc_en_pre;
+reg  tx_crc_en;
+assign tx_crc_en_pre =  ~crc_en ? 1'b0 : 
+                        (tx_num_max_en & (shift_num_cnt == 5'd0) ? 1'b1 : tx_crc_en);
+always @(posedge sclk_tx or negedge spi_tx_rstn) begin
+    if (!spi_tx_rstn) begin
+        tx_crc_en <= 1'b0;
+    end
+    else begin
+        tx_crc_en <= tx_crc_en_pre;
+    end
+end 
+
 //---------------------------------------------------------------
 // tx start flag use to clean txe
 //---------------------------------------------------------------
@@ -101,11 +127,14 @@ end
 //---------------------------------------------------------------
 // serial crc calculation
 //---------------------------------------------------------------
+wire crc_calc_en;
+assign crc_calc_en = crc_en & ~tx_crc_en_pre;
+
 serial_crc_new u_tx_crc (
     .clk(sclk_tx),
     .rst_n(spi_tx_rstn),
     .data_in(shift_reg_pre[0]),
-    .data_valid(crc_en & ~tx_num_max_en),
+    .data_valid(crc_calc_en),
     .init(~crc_en),
     .crc_mode(df),
     .polynomial(crc_poly),
@@ -151,6 +180,5 @@ begin
     end
 end
 endfunction
-
 
 endmodule
