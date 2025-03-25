@@ -7,7 +7,6 @@ module spi_txc (
     input wire lsbf,
     input wire crc_en,
 
-    input wire txe,
     input wire rxonly,
 
     input wire [31:0] crc_poly,
@@ -28,7 +27,6 @@ reg [4:0]   shift_num_cnt;
 wire [4:0]  shift_num_max;
 
 reg [12:0]  tx_num_cnt;
-wire        tx_num_max_en;
 
 //---------------------------------------------------------------
 // select shift data width
@@ -77,16 +75,14 @@ end
 // transfer data frame counter(only use to crc mode)
 //---------------------------------------------------------------
 wire [12:0] tx_num_cnt_pre;
-assign tx_num_cnt_pre = (shift_num_cnt == 5'd0) & ~tx_num_max_en ? (tx_num_cnt + 1'b1) : tx_num_cnt;
+assign tx_num_cnt_pre = (rxonly | ~crc_en) ? 13'h0 : 
+                        ((shift_num_cnt == 5'd0) & ~tx_num_max_en) ? (tx_num_cnt + 1'b1) : tx_num_cnt;
 always @(posedge sclk_tx or negedge spi_tx_rstn) begin
     if (!spi_tx_rstn) begin
         tx_num_cnt <= 13'h0;
     end
-    else if (rxonly) begin
-        tx_num_cnt <= 13'h0;
-    end
-    else if ((shift_num_cnt >= shift_num_max) & ~tx_num_max_en)begin
-        tx_num_cnt <= tx_num_cnt + 1'b1;
+    else begin
+        tx_num_cnt <= tx_num_cnt_pre;
     end
 end
 
