@@ -6,6 +6,7 @@ module spi_rxc(
     input wire lsbf,
     input wire crc_en,
 
+    input wire rxonly,
     input wire shift_in,
 
     input wire [31:0] crc_poly,
@@ -65,7 +66,8 @@ end
 // transfer data frame counter(data frame and crc frame)
 //---------------------------------------------------------------
 
-assign rx_num_cnt_pre = (shift_num_cnt == 5'd0) & ~rx_num_max_en ? (rx_num_cnt + 1'b1) : rx_num_cnt;
+assign rx_num_cnt_pre = (~rxonly & ~crc_en) ? 13'h0 : 
+                        ((shift_num_cnt == 5'd0) & ~rx_num_max_en) ? (rx_num_cnt + 1'b1) : rx_num_cnt;
 always @(posedge clk_rx or negedge spi_rx_rstn) begin
     if (!spi_rx_rstn) begin
         rx_num_cnt <= 13'h0;
