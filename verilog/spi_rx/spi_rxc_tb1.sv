@@ -12,6 +12,7 @@ module spi_rxc_tb;
     reg [12:0]  spi_tnum_max;
     reg         lsbf;
     reg         crc_en;
+    reg         rxonly;     // 添加rxonly信号
     reg         shift_in;
     reg [31:0]  crc_poly;
     reg         clock_enable;  // 时钟使能信号
@@ -48,6 +49,7 @@ module spi_rxc_tb;
         .spi_tnum_max   (spi_tnum_max),
         .lsbf           (lsbf),
         .crc_en         (crc_en),
+        .rxonly         (rxonly),       // 连接rxonly信号
         .shift_in       (shift_in),
         .crc_poly       (crc_poly),
         .rx_crc_data_out(rx_crc_data_out),
@@ -113,6 +115,7 @@ module spi_rxc_tb;
         spi_tnum_max = 13'd0;
         lsbf = 1'b0;
         crc_en = 1'b0;
+        rxonly = 1'b0;     // 初始化rxonly信号
         shift_in = 1'b0;
         crc_poly = 32'h04C11DB7; // 标准以太网CRC-32多项式
         
@@ -197,6 +200,30 @@ module spi_rxc_tb;
         // 复位 - 测试用例4结束后
         do_reset();
         
+        // 测试用例5: 仅接收模式测试
+        $display("测试用例5: 仅接收模式测试");
+        df = 2'b01;         // 16位模式
+        spi_tnum_max = 13'd2;   // 3帧
+        lsbf = 1'b0;        // MSB优先
+        crc_en = 1'b1;      // 启用CRC
+        rxonly = 1'b1;      // 启用仅接收模式
+        
+        send_bits(32'hA1B2, 16, 0);
+        #(CLK_PERIOD*2);
+        $display("仅接收模式-帧1数据: %h", spi_rx_data);
+        
+        send_bits(32'hC3D4, 16, 0);
+        #(CLK_PERIOD*2);
+        $display("仅接收模式-帧2数据: %h", spi_rx_data);
+        
+        send_bits(32'hE5F6, 16, 0);
+        #(CLK_PERIOD*2);
+        $display("仅接收模式-帧3数据: %h", spi_rx_data);
+        $display("仅接收模式-CRC计算结果: %h", rx_crc_data_out);
+        
+        // 复位 - 测试用例5结束后
+        do_reset();
+        
         // 完成仿真
         #(CLK_PERIOD*10);
         $display("仿真成功完成");
@@ -205,8 +232,8 @@ module spi_rxc_tb;
 
     // 监控输出
     initial begin
-        $monitor("时间=%0t: 时钟=%b, 复位=%b, 接收数据=%h, rx_busy=%b, rx_num_max_en=%b, rx_crc_en=%b", 
-                 $time, gated_clk, spi_rx_rstn, spi_rx_data, rx_busy, rx_num_max_en, rx_crc_en);
+        $monitor("时间=%0t: 时钟=%b, 复位=%b, 仅接收=%b, 接收数据=%h, rx_busy=%b, rx_num_max_en=%b, rx_crc_en=%b", 
+                 $time, gated_clk, spi_rx_rstn, rxonly, spi_rx_data, rx_busy, rx_num_max_en, rx_crc_en);
     end
 
 endmodule
